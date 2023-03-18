@@ -1,13 +1,17 @@
 import customtkinter
 import os
-from PIL import Image
+from PIL import Image, ImageTk
 import asyncio
 from generate_db import generate_db
 import threading
+import urllib.request
+from io import BytesIO
+import json
 
 class App(customtkinter.CTk):
     def __init__(self):
         super().__init__()
+        self.images = []
 
         self.title("beeGhost")
         self.geometry("700x450")
@@ -71,14 +75,23 @@ class App(customtkinter.CTk):
         # create settings frame
         self.settings_frame = customtkinter.CTkFrame(self, corner_radius=0, fg_color="transparent")
 
-        # create third frame
-        self.third_frame = customtkinter.CTkFrame(self, corner_radius=0, fg_color="transparent")
+        # Display image from link in ghosteshop.json
+        self.canvas = customtkinter.CTkCanvas(self.home_frame)
+        # make the canvas 5x higher than the window height to allow scrolling
+        self.canvas.grid(row=3, column=0, sticky="nsew")
 
+        self.scrollbar = customtkinter.CTkScrollbar(self.home_frame, command=self.canvas.yview)
+        self.scrollbar.grid(row=3, column=1, sticky="ns")
+
+        # attach scrollbar to canvas
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+
+
+                
         # select default frame
         self.select_frame_by_name("home")
 
 
-        
 
     def select_frame_by_name(self, name):
         # set button color for selected button
@@ -104,6 +117,32 @@ class App(customtkinter.CTk):
     def change_appearance_mode_event(self, new_appearance_mode):
         customtkinter.set_appearance_mode(new_appearance_mode)
 
+        
+def display_images(app):
+    with open('ghosteshop.json', "r", encoding="utf-8") as json_file:
+        data = json.load(json_file)
+    for i, image in enumerate(data["storeContent"]):
+        #set the number of columns to the width of the canvas divided by the width of the image
+        
+        url = image["info"]["icon_url"]
+        with urllib.request.urlopen(url) as u:
+            raw_data = u.read()
+        im = Image.open(BytesIO(raw_data))
+        columns = int(app.canvas.cget("width")) // im.width*2
+        tk_im = ImageTk.PhotoImage(im)
+        app.images.append(tk_im)  # Add the new tk_im to a list
+        
+        row = i // columns  # Calculate the row position of the image
+        col = i % columns   # Calculate the column position of the image
+        
+        x = col * im.width
+        y = row * im.height
+
+        #if y is greater than the height of the canvas, resize the canvas
+        if y > int(app.canvas.cget("height")):
+            break 
+        app.canvas.create_image(x, y, image=tk_im, anchor="nw")
+
 def update_progress_bar(progress_bar):
     # Run generate_db as a task in the event loop
     loop = asyncio.new_event_loop()
@@ -114,4 +153,5 @@ def update_progress_bar(progress_bar):
 if __name__ == "__main__":
     app = App()
     threading.Thread(target=update_progress_bar, args=(app.progress_bar,), daemon=True).start()
+    threading.Thread(target=display_images, args=(app,), daemon=True).start()
     app.mainloop()
